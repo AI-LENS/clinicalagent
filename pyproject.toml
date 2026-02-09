@@ -1,0 +1,52 @@
+[project]
+name = "clinicalagent"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "AI LENS", email = "admin@ailens.ai" }
+]
+requires-python = ">=3.13"
+dependencies = [
+  "jinja2>=3.1.6",
+  "json-schema-to-pydantic>=0.4.7",
+  "openai>=2.6.0",
+  "partialjson>=1.0.0",
+  "pydantic>=2.12.3",
+  "pydantic-settings>=2.11.0",
+]
+
+[project.scripts]
+clinicalagent = "clinicalagent:main"
+
+[project.optional-dependencies]
+all = [
+  "fastmcp>=2.13.0.2",
+  "regex>=2025.11.3",
+]
+debug = [
+  "regex>=2025.11.3",
+]
+mcp = ["fastmcp>=2.13.0.2"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+  "pre-commit>=4.2.0",
+  "pytest>=8.0.0",
+  "pytest-asyncio>=0.23.0",
+]
+
+[tool.poe.tasks]
+precmt = "pre-commit run --all-files"
+
+[tool.pyright]
+enableExperimentalFeatures = true
+
+[tool.pytest.ini_options]
+python_files = "test_*.py"
+testpaths = ["tests"]
+

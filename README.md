@@ -127,7 +127,7 @@ clinicalagent uses `pydantic-settings` for configuration. You can configure it u
 
 | Setting                | Description                                    | Default |
 | ---------------------- | ---------------------------------------------- | ------- |
-| `llm_model_name`       | The name of the LLM model to use.              | `None`  |
+| `llm_model name`       | The name of the LLM model to use.              | `None`  |
 | `llm_api_key`          | API key for the LLM provider.                  | `None`  |
 | `llm_base_url`         | Base URL for the LLM API.                      | `None`  |
 | `max_agent_iterations` | Maximum number of loops the agent can perform. | `7`     |

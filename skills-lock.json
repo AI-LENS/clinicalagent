@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "Pytest Testing": {
+      "source": "pluginagentmarketplace/custom-plugin-python",
+      "sourceType": "github",
+      "computedHash": "4866a177efbeae4ebca8104a3f7870bd21ab8f729f872b54e3ae7a58aa317bdc"
+    }
+  }
+}

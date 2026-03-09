@@ -1,6 +1,6 @@
 on:
   workflow_dispatch:
-name: release
+name: agent
 
 jobs:
   release-build:

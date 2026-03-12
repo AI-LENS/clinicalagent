@@ -1,3 +1,20 @@
+"""
+The core Agent class that runs the agentic loop.
+
+The Agent is intentionally thin — it only implements the loop mechanics:
+    context → LLM call → response handling → repeat or stop
+
+All domain-specific behavior (tools, prompts, tool execution, termination logic)
+is delegated to the ``Environment``. This separation allows the same Agent to power
+different clinical workflows by swapping environments.
+
+The agent supports two consumption modes:
+    - ``agent.run()``   — yields full ``AgentResponse`` objects (useful for programmatic access
+      to tool calls, thoughts, and completion status).
+    - ``agent.stream()`` — yields ``TextStream`` and ``ToolCallStream`` events (useful for
+      real-time UI rendering of incremental text).
+"""
+
 from __future__ import annotations
 
 import logging
@@ -23,7 +40,36 @@ logger = logging.getLogger(__name__)
 
 class Agent[T: BaseToolModel, R: AgentResponse | AgentResponseThoughtful]:
     """
-    An agent that orchestrates LLM interactions with tool calling capabilities.
+    The main orchestrator that runs the agentic loop with tool calling capabilities.
+
+    The agent loop works as follows:
+        1. **Context engineering**: Calls ``environment.get_context()`` to build the LLM prompt,
+           including system instructions, conversation history, and tool descriptions.
+        2. **LLM streaming**: Sends the context to the LLM and streams back a structured
+           ``AgentResponse`` (parsed incrementally via ``StructuredStreamParser``).
+        3. **Response handling**: After a complete LLM turn, calls
+           ``environment.on_agent_message_completed()`` which either:
+           - Returns ``TERMINATE`` → agent loop stops.
+           - Returns a ``Message`` (e.g., tool result) → added to history, loop continues.
+        4. **Iteration limit**: If the loop exceeds ``max_iterations``, raises
+           ``MaxAgentIterationsExceededError``.
+
+    Type Parameters:
+        T: The base tool model type (``BaseToolModel`` subclass). Flows from the environment's
+           tool definitions through to ``AgentResponse.action.arguments``.
+        R: The response type — either ``AgentResponse[T]`` (when ``disable_thought=True``)
+           or ``AgentResponseThoughtful[T]`` (when ``disable_thought=False``).
+           Determined at construction time via ``@overload`` on ``__new__``.
+
+    Usage:
+        >>> env = MyEnvironment(tools=[...])
+        >>> env.history.add_message(role="user", content="Find NSCLC trials")
+        >>> agent = Agent(environment=env, disable_thought=True)
+        >>> async for event in agent.stream():
+        ...     if event.type == "text":
+        ...         print(event.delta, end="")
+        ...     elif event.type == "tool_call":
+        ...         print(f"\\nCalling tool: {event.tool_call.tool_name}")
     """
 
     @overload

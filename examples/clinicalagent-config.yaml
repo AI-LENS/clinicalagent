@@ -1,3 +1,23 @@
+# clinicalagent configuration file
+# Place this file as `clinicalagent-config.yaml` in your project root.
+#
+# Settings priority (highest to lowest):
+#   1. Constructor arguments (programmatic)
+#   2. This YAML file
+#   3. .env file
+#   4. Environment variables
+#
+# Required settings:
+#   llm_model_name  - Model identifier (provider-specific, e.g., "gpt-4o", "google/gemini-2.5-flash")
+#   llm_base_url    - OpenAI-compatible API endpoint URL
+#
+# Optional settings:
+#   llm_api_key           - API authentication key
+#   llm_api_extra_kw      - Extra kwargs passed to the API (e.g., {temperature: 0.7})
+#   max_agent_iterations  - Max loop iterations before error (default: 7)
+#   max_history_length    - Messages before auto-summarization (default: 11, null to disable)
+#   reduce_history_by     - Messages to summarize when triggered (default: 7)
+
 llm_model_name: google/gemini-2.5-flash
 llm_base_url: https://openrouter.ai/api/v1
 # llm_api_key: [your_openrouter_api_key_here]

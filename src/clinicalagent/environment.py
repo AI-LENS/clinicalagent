@@ -1,3 +1,31 @@
+"""
+Environment definitions for the clinicalagent framework.
+
+An Environment is the agent's "world" — it defines:
+    1. **What tools are available** (``get_tools()``)
+    2. **What context the LLM sees** (``get_context()``) — system prompt, history, instructions
+    3. **What happens after the LLM responds** (``on_agent_message_completed()``) — tool execution,
+       termination logic, continuation prompts
+
+This module provides:
+    - ``Environment`` — Abstract base class defining the interface.
+    - ``DefaultEnvironment`` — Batteries-included implementation with Jinja2-rendered system prompts,
+      automatic history summarization, tool execution hooks, and termination detection.
+
+Architecture:
+    The ``Agent`` class is intentionally simple — it just runs the loop. All domain-specific
+    behavior lives in the Environment. This separation means you can swap environments without
+    changing the agent, enabling different clinical workflows (trial matching, adverse event
+    monitoring, etc.) to share the same agent loop.
+
+Customization:
+    To build a custom environment, you typically:
+    1. Subclass ``DefaultEnvironment``
+    2. Override ``call_tool()`` to execute tools against your backend (MCP server, REST API, etc.)
+    3. Optionally override ``get_context()`` for custom prompt engineering
+    4. Optionally override ``on_agent_message_completed()`` for custom termination logic
+"""
+
 import logging
 from abc import ABC, abstractmethod
 from typing import Awaitable, Callable, Iterable
@@ -22,40 +50,87 @@ logger = logging.getLogger(__name__)
 
 
 class Environment[T: BaseModel](ABC):
-    """Defines the environment in which the agent operates, including tools, context, and termination conditions."""
+    """
+    Abstract base class defining the interface for an agent environment.
+
+    An Environment controls three aspects of agent behavior:
+        1. **Context engineering** — What the LLM sees each iteration (``get_context``).
+        2. **Post-response handling** — What happens after the LLM produces a response,
+           including tool execution and termination decisions (``on_agent_message_completed``).
+        3. **Tool availability** — Which tools the agent can call (``get_tools``).
+
+    Type Parameter:
+        T: The base type for tool input models. All tools in this environment must have
+           input schemas that are subtypes of ``T``.
+
+    Subclassing:
+        Implement all three abstract methods. For most use cases, subclass
+        ``DefaultEnvironment`` instead — it provides standard implementations
+        and you only need to override ``call_tool()``.
+
+    Attributes:
+        history: The mutable conversation history. The agent loop reads from and writes to this.
+    """
 
     history: History
 
     @abstractmethod
     async def get_context(self, remaining_iterations: int) -> History:
-        """Modify and return the conversation context based on history and remaining iterations."""
+        """
+        Build and return the conversation context for the current agent iteration.
+
+        This method is called at the start of each agent loop iteration. It should
+        return a History object containing everything the LLM needs to see — typically
+        a system prompt followed by relevant conversation history.
+
+        Args:
+            remaining_iterations: How many iterations the agent has left before hitting
+                ``max_iterations``. Useful for injecting urgency into the system prompt.
+
+        Returns:
+            A History object to send to the LLM as context.
+        """
         raise NotImplementedError()
 
     @abstractmethod
     async def on_agent_message_completed(
         self, last_response: AgentResponse
     ) -> Message | TERMINATE:
-        """Hook called after each agent message is completed.
+        """
+        Handle the agent's response after each completed LLM turn.
 
-        This method should:
-        1. Perform any side effects (logging, printing, etc.)
-        2. Decide whether to continue or terminate the agent's turn
-        3. If continuing, execute any tool calls and return a Message to add to history
+        This is the main decision point in the agent loop. It should:
+            1. Inspect the response (did the agent make a tool call? which tool?)
+            2. Execute any tool calls and collect results
+            3. Decide whether to continue (return a Message) or stop (return TERMINATE)
 
         Args:
-            last_response: The most recent agent response to evaluate.
+            last_response: The fully parsed agent response from the most recent LLM call.
 
         Returns:
-            None to terminate the agent's turn.
-            A Message object to continue the conversation (with appropriate role, content, and flags).
+            ``TERMINATE`` to stop the agent loop.
+            A ``Message`` to add to history and continue the loop (typically containing
+            the tool result or a continuation prompt).
         """
         raise NotImplementedError()
 
     @abstractmethod
     async def get_tools(self) -> Iterable[TypedTool[type[T]]]:
-        """Return the list of tools available to the agent in this environment."""
+        """
+        Return the tools available to the agent in this environment.
+
+        Called at the start of each iteration to build the system prompt and response schema.
+        The tool list can be dynamic (e.g., fetched from an MCP server each time).
+
+        Returns:
+            An iterable of ``TypedTool`` instances.
+        """
         raise NotImplementedError()
 
+
+# ── Jinja2 prompt templates ──────────────────────────────────────────────────
+# These templates are rendered by DefaultEnvironment.get_context() on each iteration.
+# Template variables: tools, remaining_iterations, extra_instructions, terminating_tools.
 
 DEFAULT_SYSTEM_PROMPT_TEMPLATE = """You are a helpful AI agent with access to the following tools:
 
@@ -101,6 +176,9 @@ CONTINUATION_TEMPLATE = """No tool was called in the last response. If you have 
 {% if terminating_tools|length != 0 %}
 If you have, you must conclude by calling any one of the terminating tool(s): {{ terminating_tools | join(', ') }}.
 {% endif %}"""
+"""Prompt sent to the LLM when it produces a response without any tool call and
+``require_terminating_tool_call`` is effectively active via the DefaultEnvironment.
+Nudges the LLM to either explore further or terminate properly."""
 
 
 class DefaultEnvironment[T: BaseModel](Environment[T]):

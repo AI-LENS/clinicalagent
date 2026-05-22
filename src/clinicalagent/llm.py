@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 
 from openai import AsyncOpenAI
+from openai.lib._parsing._responses import type_to_text_format_param
 from partialjson.json_parser import JSONParser
 from pydantic import BaseModel
 
@@ -69,10 +70,11 @@ async def stream_agent_response[T: BaseModel](
         api_key=client_config.api_key,
     )
 
-    async with client.responses.stream(
+    async with client.responses.create(
         model=client_config.llm_model_name,
         input=history.compact(),  # type: ignore
-        text_format=schema,
+        stream=True,
+        text={"format": type_to_text_format_param(schema)},
         extra_body=client_config.extra_kw,
     ) as stream:
         async for event in stream:

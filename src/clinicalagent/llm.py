@@ -70,22 +70,23 @@ async def stream_agent_response[T: BaseModel](
         api_key=client_config.api_key,
     )
 
-    async with client.responses.create(
+    stream = await client.responses.create(
         model=client_config.llm_model_name,
         input=history.compact(),  # type: ignore
         stream=True,
         text={"format": type_to_text_format_param(schema)},
         extra_body=client_config.extra_kw,
-    ) as stream:
-        async for event in stream:
-            if (
-                event.type == "response.output_text.delta"
-                or event.type == "response.refusal.delta"
-            ):
-                parsed = stream_parser.feed(event.delta)
-                if parsed is not None and parsed != last_yielded:
-                    last_yielded = parsed
-                    yield parsed
+    )
+    
+    async for event in stream:
+        if (
+            event.type == "response.output_text.delta"
+            or event.type == "response.refusal.delta"
+        ):
+            parsed = stream_parser.feed(event.delta)
+            if parsed is not None and parsed != last_yielded:
+                last_yielded = parsed
+                yield parsed
 
 
 async def simulated_agent_stream(

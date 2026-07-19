@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     max_agent_iterations: int = 7
     max_history_length: int | None = 11
     reduce_history_by: int = 7
+    max_context_tokens: int | None = None
 
     model_config = SettingsConfigDict(
         yaml_file="clinicalagent-config.yaml",

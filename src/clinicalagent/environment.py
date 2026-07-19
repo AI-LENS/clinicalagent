@@ -5,7 +5,7 @@ from typing import Awaitable, Callable, Iterable
 from jinja2 import Template
 from pydantic import BaseModel
 
-from .history_utils import create_summary_entry, last_summary_index
+from .history_utils import create_summary_entry, estimate_tokens, last_summary_index
 from .settings import settings
 from .types import (
     TERMINATE,
@@ -123,6 +123,7 @@ class DefaultEnvironment[T: BaseModel](Environment[T]):
         history: History | None = None,
         max_history_length: int | None = settings.max_history_length,
         reduce_history_by: int = settings.reduce_history_by,
+        max_context_tokens: int | None = settings.max_context_tokens,
         openai_client: OpenAiClientConfig | None = None,
     ):
         """
@@ -134,6 +135,8 @@ class DefaultEnvironment[T: BaseModel](Environment[T]):
             history: Optional conversation history. If not provided, a new empty history is created.
             max_history_length: Maximum number of history entries to keep before summarizing.
             reduce_history_by: Number of entries to reduce when summarizing history.
+            max_context_tokens: Approximate token budget (chars/4) for the active history;
+                exceeding it also triggers summarization. None disables the token trigger.
             openai_client: Optional OpenAI client configuration for summarization.
         """
         self.extra_instructions = extra_instructions
@@ -142,6 +145,7 @@ class DefaultEnvironment[T: BaseModel](Environment[T]):
         self.history = history or History.model_validate([])
         self.max_history_length = max_history_length
         self.reduce_history_by = reduce_history_by
+        self.max_context_tokens = max_context_tokens
         self.openai_client = openai_client
         self.provided_tools = tools
 
@@ -161,10 +165,13 @@ class DefaultEnvironment[T: BaseModel](Environment[T]):
             Updated History object with the new system prompt prepended
         """
 
+        active = self.history.root[last_summary_index(self.history) :]
         if (
             self.max_history_length is not None
-            and len(self.history.root) - last_summary_index(self.history)
-            > self.max_history_length
+            and len(active) > self.max_history_length
+        ) or (
+            self.max_context_tokens is not None
+            and estimate_tokens(active) >= self.max_context_tokens
         ):
             self.history = await create_summary_entry(
                 old_history=self.history,

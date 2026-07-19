@@ -200,6 +200,6 @@ class Agent[T: BaseToolModel, R: AgentResponse | AgentResponseThoughtful]:
                     prev_content = response.msg_to_user
                     yield TextStream(delta=new_content)
             else:
-                ValueError(
+                raise ValueError(
                     "Agent response content is not a valid continuation of previous content."
                 )

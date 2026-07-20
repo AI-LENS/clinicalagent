@@ -27,7 +27,6 @@ async def create_summary_entry(
     """Create a summary entry for the conversation history."""
     history = old_history.model_copy(deep=True)
     start = last_summary_index(history)
-    print(f"Creating summary entry for conversation history starting at index {start} and reducing by {reduce_by} messages.")
 
     truncated_conv = "\n".join(
         f"{msg.role}: {msg.content}" for msg in history.root[start : start + reduce_by]

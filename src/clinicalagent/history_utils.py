@@ -1,5 +1,4 @@
 import logging
-from typing import Iterable
 
 from pydantic import BaseModel
 
@@ -38,11 +37,6 @@ def last_summary_index(history: History) -> int:
     )
 
 
-def estimate_tokens(messages: Iterable[Message]) -> int:
-    """Rough token estimate: total characters / 4."""
-    return sum(len(msg.content) for msg in messages) // 4
-
-
 async def create_summary_entry(
     old_history: History,
     reduce_by: int,
@@ -63,16 +57,26 @@ async def create_summary_entry(
         [Message(role="user", content=SUMMARIZATION_PROMPT.format(conversation=truncated_conv))]
     )
     for _ in range(2):
-        summary_response = await structured_agent_response(
-            history=truncation_hist,
-            schema=ConvSummary,
-            client_config=client_config,
-        )
+        # A truncated reply ('{\n "summary":' — the model hit its output cap
+        # mid-JSON) makes responses.parse RAISE, it does not return a short
+        # string. Catching it here is what makes the retry cover both failure
+        # modes; uncaught it escapes create_summary_entry entirely and kills the
+        # caller's run over an OPTIONAL compaction step.
+        try:
+            summary_response = await structured_agent_response(
+                history=truncation_hist,
+                schema=ConvSummary,
+                client_config=client_config,
+            )
+        except Exception:
+            logger.warning("Summarizer call failed; retrying.", exc_info=True)
+            continue
         if len(summary_response.summary.strip()) >= MIN_SUMMARY_CHARS:
             break
     else:
         logger.warning(
-            "Summarizer returned a degenerate summary twice; keeping history unchanged."
+            "Summarizer failed or returned a degenerate summary twice; "
+            "keeping history unchanged."
         )
         return history
 

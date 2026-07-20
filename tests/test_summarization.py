@@ -83,6 +83,53 @@ async def test_degenerate_summary_keeps_history_unchanged(monkeypatch):
     assert [m.content for m in new.root] == [m.content for m in history.root]
 
 
+@pytest.mark.asyncio
+async def test_summarizer_exception_keeps_history_unchanged(monkeypatch):
+    """A truncated JSON reply makes responses.parse RAISE (pydantic
+    json_invalid) rather than return a short summary. Compaction is optional —
+    it must degrade to 'history unchanged', never propagate and kill the run."""
+
+    async def boom(history, schema, client_config=None):
+        raise ValueError("Invalid JSON: EOF while parsing a value")
+
+    monkeypatch.setattr(history_utils, "structured_agent_response", boom)
+    history = make_history(
+        Message(role="user", content="request"),
+        Message(role="assistant", content="reply"),
+        Message(role="user", content="more"),
+    )
+
+    new = await create_summary_entry(history, reduce_by=2)
+
+    assert not any(MessageFlag.is_summary in m.flags for m in new.root)
+    assert [m.content for m in new.root] == [m.content for m in history.root]
+
+
+@pytest.mark.asyncio
+async def test_summarizer_exception_is_retried(monkeypatch):
+    """The retry must cover a raising call, not only a degenerate one."""
+    calls = 0
+
+    async def flaky(history, schema, client_config=None):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise ValueError("Invalid JSON: EOF while parsing a value")
+        return ConvSummary(summary="a sufficiently long summary of the prior conversation")
+
+    monkeypatch.setattr(history_utils, "structured_agent_response", flaky)
+    history = make_history(
+        Message(role="user", content="request"),
+        Message(role="assistant", content="reply"),
+        Message(role="user", content="more"),
+    )
+
+    new = await create_summary_entry(history, reduce_by=2)
+
+    assert calls == 2
+    assert any(MessageFlag.is_summary in m.flags for m in new.root)
+
+
 def test_estimate_tokens_is_chars_over_four():
     history = make_history(Message(role="user", content="x" * 400))
     assert history_utils.estimate_tokens(history.root) == 100

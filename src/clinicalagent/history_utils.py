@@ -13,7 +13,7 @@ def last_summary_index(history: History) -> int:
         (
             idx
             for idx, message in reversed(list(enumerate(history.root)))
-            if MessageFlag.is_summary in message.flags and message.role == "system" 
+            if MessageFlag.is_summary in message.flags
         ),
         0,
     )
@@ -26,10 +26,9 @@ async def create_summary_entry(
 ) -> History:
     """Create a summary entry for the conversation history."""
     history = old_history.model_copy(deep=True)
-    start = last_summary_index(history)
 
     truncated_conv = "\n".join(
-        f"{msg.role}: {msg.content}" for msg in history.root[start : start + reduce_by]
+        f"{msg.role}: {msg.content}" for msg in history.root[:reduce_by]
     )
 
     prompt = f"Please summarize the following conversation between the user and the assistant in a concise manner, retaining all important details:\n\n{truncated_conv}"
@@ -42,8 +41,8 @@ async def create_summary_entry(
     )
     history.add_message(
         role="system",
-        content=summary_response.summary,
+        content=f"Summary of previous conversation: {summary_response.summary}",
         flags=[MessageFlag.is_summary],
-        index=start + reduce_by,
+        index=reduce_by + last_summary_index(history),
     )
     return history

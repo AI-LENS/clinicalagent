@@ -19,11 +19,16 @@ logger = logging.getLogger(__name__)
 
 parser = JSONParser()
 
-# OpenAI's Structured Outputs `json_schema.name` is capped at 64 characters.
-# Pydantic model names (including dynamically-generated ones) can exceed
-# that, which otherwise 400s the request before a single token streams back.
+# OpenAI's Structured Outputs `json_schema.name` must be <=64 chars and
+# match ^[a-zA-Z0-9_-]+$. Pydantic's auto-generated names for parametrized
+# generics (e.g. `AgentResponseThoughtful[Union[FooArgs, BarArgs]]`, the
+# real shape used for the agent's per-turn response schema) violate both:
+# they're routinely well over 64 chars AND contain `[`, `]`, `,`, and
+# spaces. Either violation 400s the request before a single token streams
+# back.
 _SCHEMA_NAME_MAX_LEN = 64
 _SCHEMA_NAME_HASH_LEN = 8
+_INVALID_SCHEMA_NAME_CHARS_RE = re.compile(r"[^a-zA-Z0-9_-]")
 
 # Markdown code fences (```json ... ``` or ``` ... ```) sometimes wrap the
 # JSON payload. Fence markers aren't valid JSON syntax, so stripping them
@@ -35,18 +40,21 @@ _JSON_START_CHARS = "{["
 
 
 def cap_schema_name(name: str, max_len: int = _SCHEMA_NAME_MAX_LEN) -> str:
-    """Deterministically cap a structured-output schema name at `max_len` chars.
+    """Deterministically make a structured-output schema name provider-safe.
 
-    Names within the limit pass through unchanged. Longer names are
-    truncated and suffixed with a short stable hash of the *full original
-    name*, so the result is deterministic for a given input and distinct
-    for distinct inputs (even ones sharing a long common prefix).
+    Names that are already <= `max_len` chars and contain only
+    `[a-zA-Z0-9_-]` pass through unchanged. Otherwise, illegal characters are
+    replaced and the result truncated, then suffixed with a short stable
+    hash of the *full original name*, so the output is deterministic for a
+    given input and distinct for distinct inputs (even ones sharing a long
+    common prefix or differing only in the truncated-off tail).
     """
-    if len(name) <= max_len:
+    sanitized = _INVALID_SCHEMA_NAME_CHARS_RE.sub("_", name)
+    if sanitized == name and len(name) <= max_len:
         return name
     digest = hashlib.sha256(name.encode()).hexdigest()[:_SCHEMA_NAME_HASH_LEN]
     suffix = f"_{digest}"
-    truncated = name[: max_len - len(suffix)]
+    truncated = sanitized[: max_len - len(suffix)]
     return f"{truncated}{suffix}"
 
 

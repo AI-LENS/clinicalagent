@@ -131,3 +131,36 @@ def test_schema_name_capped_stable_and_unique():
 
     # Short names pass through untouched.
     assert cap_schema_name("Short") == "Short"
+
+
+def test_schema_name_sanitizes_characters_openai_rejects():
+    """OpenAI requires json_schema.name to match ^[a-zA-Z0-9_-]+$.
+
+    Pydantic's auto-generated names for parametrized generics (e.g.
+    `AgentResponseThoughtful[Union[FooArgs, BarArgs]]`, the real production
+    shape) contain `[`, `]`, `,`, and spaces -- illegal regardless of length.
+    Confirmed live: OpenRouter/OpenAI 400s on exactly this pattern mismatch.
+    """
+    import re as _re
+
+    valid_pattern = _re.compile(r"^[a-zA-Z0-9_-]+$")
+    generic_name = "AgentResponseThoughtful[Union[SubmitPredictionsArgs, LookupArgs]]"
+
+    capped = cap_schema_name(generic_name)
+    assert valid_pattern.match(capped), f"still invalid for OpenAI: {capped!r}"
+    assert len(capped) <= 64
+
+    # Deterministic and distinct across two illegal names that only differ
+    # after the truncation point.
+    other_generic_name = (
+        "AgentResponseThoughtful[Union[SubmitPredictionsArgs, OtherArgs]]"
+    )
+    assert cap_schema_name(generic_name) == cap_schema_name(generic_name)
+    assert cap_schema_name(generic_name) != cap_schema_name(other_generic_name)
+
+    # A short but illegal name must also be sanitized (length isn't the only trigger).
+    short_illegal = "Foo[Bar]"
+    capped_short = cap_schema_name(short_illegal)
+    assert valid_pattern.match(capped_short), (
+        f"still invalid for OpenAI: {capped_short!r}"
+    )

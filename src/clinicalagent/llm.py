@@ -7,11 +7,25 @@ from partialjson.json_parser import JSONParser
 from pydantic import BaseModel
 
 from .settings import settings
-from .types import History, OpenAiClientConfig
+from .types import History, OpenAiClientConfig, TokenUsage
 
 logger = logging.getLogger(__name__)
 
 parser = JSONParser()
+
+
+def _attach_usage(parsed, provider_usage) -> None:
+    """Copy the provider's usage report onto ``parsed`` when its schema
+    declares a ``usage`` field (AgentResponse does). A schema without the
+    field is left untouched; a missing report leaves usage None."""
+    if parsed is None or provider_usage is None:
+        return
+    if "usage" not in getattr(type(parsed), "model_fields", {}):
+        return
+    parsed.usage = TokenUsage(
+        input_tokens=getattr(provider_usage, "input_tokens", None),
+        output_tokens=getattr(provider_usage, "output_tokens", None),
+    )
 
 
 class StructuredStreamParser[T: BaseModel]:
@@ -77,7 +91,7 @@ async def stream_agent_response[T: BaseModel](
         text={"format": type_to_text_format_param(schema)},
         extra_body=client_config.extra_kw,
     )
-    
+
     async for event in stream:
         if (
             event.type == "response.output_text.delta"
@@ -87,6 +101,11 @@ async def stream_agent_response[T: BaseModel](
             if parsed is not None and parsed != last_yielded:
                 last_yielded = parsed
                 yield parsed
+        elif event.type == "response.completed":
+            # The final stream event carries the usage report. The consumer
+            # already holds the last yielded instance, so setting the field
+            # here is visible on the turn's final response.
+            _attach_usage(last_yielded, getattr(event.response, "usage", None))
 
 
 async def simulated_agent_stream(
@@ -158,4 +177,5 @@ async def structured_agent_response[T](
     )
 
     assert response.output_parsed is not None, "Expected parsed response to be present"
+    _attach_usage(response.output_parsed, getattr(response, "usage", None))
     return response.output_parsed

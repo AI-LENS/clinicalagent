@@ -129,8 +129,18 @@ class Agent[T: BaseToolModel, R: AgentResponse | AgentResponseThoughtful]:
             client_config = (
                 await self.environment.get_llm_config() or self.openai_client
             )
-            async for response in stream_agent_response(context, schema, client_config):
-                yield response  # type: ignore
+            try:
+                async for response in stream_agent_response(
+                    context, schema, client_config
+                ):
+                    yield response  # type: ignore
+            except Exception as exc:  # noqa: BLE001 — the environment judges it
+                recovery = await self.environment.on_turn_failed(exc)
+                if recovery is None:
+                    raise
+                logger.warning("turn failed, environment recovered: %s", exc)
+                self.environment.history.add_message(recovery)
+                continue
 
             assert response, "Agent failed to produce a response"
 

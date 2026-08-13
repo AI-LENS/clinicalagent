@@ -56,6 +56,17 @@ class Environment[T: BaseModel](ABC):
         """Return the list of tools available to the agent in this environment."""
         raise NotImplementedError()
 
+    async def on_turn_failed(self, exc: Exception) -> Message | None:
+        """Judge a turn whose LLM stream raised (provider error, timeout).
+
+        Return a Message to RECOVER: it joins history and ``Agent.run``
+        continues with the next iteration — e.g. an environment that armed a
+        special turn can disarm, degrade, and tell the agent what happened.
+        Return None (the default) to propagate the exception exactly as
+        before the hook existed.
+        """
+        return None
+
     async def get_llm_config(self) -> OpenAiClientConfig | None:
         """The client config for the NEXT agent turn, or None for the Agent's
         default.

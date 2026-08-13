@@ -129,12 +129,24 @@ class History(RootModel[tuple[Message, ...]]):
         self.ensure_valid_ids(raise_warning=False)
 
 
+class TokenUsage(BaseModel):
+    """Token counts the provider reported for one LLM call. Fields are None
+    when the provider omits them."""
+
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+
+
 class AgentResponse[T: BaseModel](BaseModel):
     """Response for the given user query, including the agent's thought process"""
 
     msg_to_user: str | None = None
     action: CallToolRequestParams[T] | None = None
     turn_completed: SkipJsonSchema[bool] = False
+    # Filled by the LLM helpers from the provider's usage report — never part
+    # of the schema the model is asked to produce (SkipJsonSchema), and never
+    # serialized back into history (Agent.run excludes it).
+    usage: SkipJsonSchema[TokenUsage | None] = None
 
 
 class AgentResponseThoughtful[T: BaseModel](AgentResponse[T]):

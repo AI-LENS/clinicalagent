@@ -56,6 +56,18 @@ class Environment[T: BaseModel](ABC):
         """Return the list of tools available to the agent in this environment."""
         raise NotImplementedError()
 
+    async def get_llm_config(self) -> OpenAiClientConfig | None:
+        """The client config for the NEXT agent turn, or None for the Agent's
+        default.
+
+        Consulted once per iteration by ``Agent.run``. The environment already
+        owns the turn's context, tools, and termination; overriding this adds
+        model choice — e.g. running a script-authoring turn on a different
+        model than the driver turns. The default (None) keeps every turn on
+        the config the Agent was constructed with.
+        """
+        return None
+
 
 DEFAULT_SYSTEM_PROMPT_TEMPLATE = """You are a helpful AI agent with access to the following tools:
 

@@ -124,9 +124,12 @@ class Agent[T: BaseToolModel, R: AgentResponse | AgentResponseThoughtful]:
                 disable_thought=self.disable_thought,
                 tools=await self.environment.get_tools(),
             )
-            async for response in stream_agent_response(
-                context, schema, self.openai_client
-            ):
+            # The environment may override the client config for this turn
+            # (per-iteration model choice); None falls back to the Agent's.
+            client_config = (
+                await self.environment.get_llm_config() or self.openai_client
+            )
+            async for response in stream_agent_response(context, schema, client_config):
                 yield response  # type: ignore
 
             assert response, "Agent failed to produce a response"
@@ -137,7 +140,9 @@ class Agent[T: BaseToolModel, R: AgentResponse | AgentResponseThoughtful]:
                 content=response.model_dump_json(
                     indent=2,
                     exclude_defaults=True,
-                    exclude={"flags"},
+                    # usage is observability metadata, not conversation
+                    # content — it must never echo back into the context.
+                    exclude={"flags", "usage"},
                     exclude_none=True,
                     exclude_unset=True,
                 ),
